@@ -4,44 +4,72 @@ uniform vec2 resolution;
 uniform float time;
 uniform sampler2D backbuffer; //1つ前の描画
 
-#define size 0.5
-#define scale 300.
-#define threshold vec2(0.6, 1)
+#define size 0.4 //粒サイズ
+#define scale 300. //拡大縮小率
+#define threshold vec2(0.3, 1.0) //密度
 
 float noise(in vec3 uv);
 
-vec3 particle(vec2 p)
+//グラデーションノイズ
+vec2 random(vec2 uv){
+    uv = vec2( dot(uv, vec2(127.1, 311.7)),
+               dot(uv, vec2(269.5, 183.3)));
+    return 2.0 * fract(sin(uv) * 43758.5453123) - 1.0;
+}
+
+float gnoise(vec2 uv) {
+    vec2 i = floor(uv);
+    vec2 f = fract(uv);
+
+    vec2 u = f * f * (3.0 - 2.0 * f);
+
+    return mix( mix( dot( random(i + vec2(0.0,0.0) ), f - vec2(0.0,0.0) ),
+                     dot( random(i + vec2(1.0,0.0) ), f - vec2(1.0,0.0) ), u.x),
+                mix( dot( random(i + vec2(0.0,1.0) ), f - vec2(0.0,1.0) ),
+                     dot( random(i + vec2(1.0,1.0) ), f - vec2(1.0,1.0) ), u.x), u.y);
+}
+
+vec2 particle(vec2 p)
 {
     // Repeat
     p = p * .5 + .5;
 
-    vec2 cellP = floor(p * scale);
+    vec2 cellP = floor(p * scale);  //pを拡大縮小して整数部を取り出す
 
-    p = fract(p * scale);
+    p = fract(p * scale); //pを拡大縮小して少数部を取り出す
     p = p * 2. - 1.;
 
-    // Draw circle
-    float color = smoothstep(size, size * 0.7, length(p));
+    // ドット描画
+    float color = smoothstep(size, size * 0.9, length(p));
 
-    // Kill particles by noise
-    float cell = noise(vec3(cellP, time * 0.2));
-    color *= smoothstep(threshold.x, threshold.y, cell);
+    // ノイズでドット消す
+    float cell = gnoise(cellP * 0.5 + 0.5);
+    //sin * 0.5 + 0.5 で 0.0〜1.0 の範囲におさめる
+    color *= smoothstep(0.2, max(0.5 * (sin(time * 5.4) * 0.5 + 0.5), 0.35), cell); //このcellをさらにランダムにしてみたら良いんじゃないか
+    // 数値上がると密度高まる
+    // color *= smoothstep(size * 0.01, size * 0.02 , cell * sin(time * 3.4));
 
-    return vec3(color, cellP);
+    return vec2(color);
 }
 
-vec3 particles(in vec2 p) {
-    // Distort
-   	p.x += noise(vec3(p + 20., 0.1)) * 0.03;
-  	p.y += noise(vec3(p + 10., 0.1)) * 0.03;
-    return particle(p) + particle(p * 0.83 + 3.) + particle(p * 0.6 + 40.);
+vec2 particles(in vec2 p) {
+    // 歪ませる
+   	p.x += gnoise((p + 20.)) * 0.53;
+  	p.y += gnoise((p + 10.)) * 0.57;
+    return particle(p) + particle(p * 0.93 + 3.) + particle(p * 0.63 + 40.);
 }
+
+
 
 vec3 gradient(vec2 uv) {
-    return vec3(
-        noise(vec3(uv * 0.3, time * 5.4)) * 0.5 + 0.3,
-        noise(vec3(uv * 0.3, time * 5.4)) * 0.5 + 0.3,
-        noise(vec3(uv * 0.3, time * 5.4)) * 0.5 + 0.3
+    // return vec3(
+    //     noise(vec3(uv * 0.3, time * 1.4)) * 0.5 + 0.3, //r
+    //     noise(vec3(uv * 0.3, time * 1.4)) * 0.5 + 0.0, //g
+    //     noise(vec3(uv * 0.3, time * 1.4)) * 0.5 + 0.3  //b
+    // );
+        return vec3(
+        // noise(vec3(uv * 0.3, time * 5.4)) * 0.5 + 0.5
+        gnoise(uv * 0.3) * 0.5 + 0.5
     );
 }
 
@@ -64,10 +92,10 @@ void main() {
 
     p *= 0.5;
 
-    vec3 prt = particles(p);
+    vec2 prt = particles(p);
 
     // Gradient
-    vec4 color = vec4(prt.x * gradient(uv + prt.yz), 1.);
+    vec4 color = vec4(prt.x * gradient(uv), 1.);
 
     gl_FragColor = color;
 
